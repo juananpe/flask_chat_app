@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangGraph Chat with Feedback</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            max-height: 800px;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 25px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .chat-header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f7fb;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            align-items: flex-end;
+        }
+
+        .message.assistant {
+            align-items: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .feedback-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .feedback-btn {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            padding: 6px 14px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s ease;
+        }
+
+        .feedback-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .feedback-btn.thumbs-up:hover {
+            border-color: #4caf50;
+            background: #e8f5e9;
+        }
+
+        .feedback-btn.thumbs-down:hover {
+            border-color: #f44336;
+            background: #ffebee;
+        }
+
+        .feedback-btn.selected {
+            transform: scale(1.1);
+        }
+
+        .feedback-btn.thumbs-up.selected {
+            border-color: #4caf50;
+            background: #4caf50;
+            color: white;
+        }
+
+        .feedback-btn.thumbs-down.selected {
+            border-color: #f44336;
+            background: #f44336;
+            color: white;
+        }
+
+        .feedback-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .feedback-label {
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        .feedback-status {
+            font-size: 0.75rem;
+            color: #4caf50;
+            margin-top: 5px;
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        #message-input:focus {
+            border-color: #667eea;
+        }
+
+        #send-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            padding: 15px 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        #send-btn:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        #send-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 12px 18px;
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 80px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-8px); }
+        }
+
+        .welcome-message {
+            text-align: center;
+            color: #888;
+            padding: 40px 20px;
+        }
+
+        .welcome-message h2 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .welcome-message p {
+            margin-bottom: 20px;
+        }
+
+        .suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .suggestion-btn {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .suggestion-btn:hover {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 LangGraph Chat Agent</h1>
+            <p>Chat with an AI agent - Rate responses with 👍 or 👎</p>
+        </div>
+        
+        <div class="chat-messages" id="chat-messages">
+            <div class="welcome-message">
+                <h2>Welcome! 👋</h2>
+                <p>I'm an AI assistant with access to tools. Try asking me:</p>
+                <div class="suggestions">
+                    <button class="suggestion-btn" onclick="sendSuggestion('What time is it?')">What time is it?</button>
+                    <button class="suggestion-btn" onclick="sendSuggestion('What\'s the weather in New York?')">Weather in NY</button>
+                    <button class="suggestion-btn" onclick="sendSuggestion('Calculate 25 * 17 + 33')">Do math</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off">
+                <button id="send-btn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        let isFirstMessage = true;
+
+        // Send message on Enter key
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function sendSuggestion(text) {
+            messageInput.value = text;
+            sendMessage();
+        }
+
+        function addMessage(content, role, feedbackUrls = null, runId = null) {
+            // Remove welcome message on first message
+            if (isFirstMessage) {
+                const welcome = chatMessages.querySelector('.welcome-message');
+                if (welcome) welcome.remove();
+                isFirstMessage = false;
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            let html = `<div class="message-content">${escapeHtml(content)}</div>`;
+            
+            // Add feedback buttons for assistant messages
+            if (role === 'assistant' && feedbackUrls) {
+                html += `
+                    <div class="feedback-buttons" data-run-id="${runId}">
+                        <button class="feedback-btn thumbs-up" 
+                                onclick="submitFeedback(this, '${feedbackUrls.thumbs_up_url}', 'up')"
+                                title="Good response">
+                            👍
+                        </button>
+                        <button class="feedback-btn thumbs-down" 
+                                onclick="submitFeedback(this, '${feedbackUrls.thumbs_down_url}', 'down')"
+                                title="Bad response">
+                            👎
+                        </button>
+                        <span class="feedback-label">Rate this response</span>
+                    </div>
+                `;
+            }
+            
+            messageDiv.innerHTML = html;
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function addTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant';
+            typingDiv.id = 'typing-indicator';
+            typingDiv.innerHTML = `
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            chatMessages.appendChild(typingDiv);
+            scrollToBottom();
+        }
+
+        function removeTypingIndicator() {
+            const typing = document.getElementById('typing-indicator');
+            if (typing) typing.remove();
+        }
+
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // Add user message
+            addMessage(message, 'user');
+            messageInput.value = '';
+            
+            // Disable input while processing
+            sendBtn.disabled = true;
+            messageInput.disabled = true;
+            
+            // Show typing indicator
+            addTypingIndicator();
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                const data = await response.json();
+                
+                removeTypingIndicator();
+
+                if (data.error) {
+                    addMessage(`Error: ${data.error}`, 'assistant');
+                } else {
+                    addMessage(data.response, 'assistant', data.feedback, data.run_id);
+                }
+            } catch (error) {
+                removeTypingIndicator();
+                addMessage('Sorry, something went wrong. Please try again.', 'assistant');
+                console.error('Error:', error);
+            } finally {
+                sendBtn.disabled = false;
+                messageInput.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        async function submitFeedback(button, url, type) {
+            const feedbackContainer = button.parentElement;
+            const buttons = feedbackContainer.querySelectorAll('.feedback-btn');
+            
+            // Disable all buttons
+            buttons.forEach(btn => btn.disabled = true);
+            
+            try {
+                // Use the presigned feedback URL
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+
+                if (response.ok || response.status === 200) {
+                    // Mark the selected button
+                    button.classList.add('selected');
+                    
+                    // Update the label to show success
+                    const label = feedbackContainer.querySelector('.feedback-label');
+                    if (label) {
+                        label.textContent = type === 'up' ? '✓ Thanks for the positive feedback!' : '✓ Thanks for the feedback!';
+                        label.classList.add('feedback-status');
+                    }
+                } else {
+                    throw new Error('Feedback submission failed');
+                }
+            } catch (error) {
+                console.error('Feedback error:', error);
+                // Re-enable buttons on error
+                buttons.forEach(btn => btn.disabled = false);
+                
+                // Try alternative direct feedback submission
+                try {
+                    const runId = feedbackContainer.dataset.runId;
+                    const score = type === 'up' ? 1 : 0;
+                    
+                    const altResponse = await fetch('/feedback', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            run_id: runId,
+                            score: score,
+                            comment: type === 'up' ? 'thumbs_up' : 'thumbs_down'
+                        })
+                    });
+                    
+                    if (altResponse.ok) {
+                        button.classList.add('selected');
+                        const label = feedbackContainer.querySelector('.feedback-label');
+                        if (label) {
+                            label.textContent = type === 'up' ? '✓ Thanks for the positive feedback!' : '✓ Thanks for the feedback!';
+                        }
+                        buttons.forEach(btn => btn.disabled = true);
+                    }
+                } catch (altError) {
+                    console.error('Alternative feedback also failed:', altError);
+                    alert('Failed to submit feedback. Please try again.');
+                }
+            }
+        }
+    </script>
+</body>
+</html>

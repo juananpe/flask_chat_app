@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+.env
+venv/
+ENV/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Flask
+instance/
+*.db
+
+# General
+*.log
+*.sqlite3
+
+# Node (if any frontend)
+node_modules/
+
+# Git
+.git/
