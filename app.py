@@ -40,7 +40,13 @@ langsmith_client = Client()
 PROJECT_NAME = os.environ['LANGSMITH_PROJECT']
 try:
     _project = langsmith_client.read_project(project_name=PROJECT_NAME)
-    LANGSMITH_PROJECT_URL = f"https://smith.langchain.com/o/{_project.tenant_id}/projects/p/{_project.id}"
+    # Use EU dashboard URL if LANGCHAIN_ENDPOINT points to EU region
+    endpoint = os.getenv('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
+    if 'eu.api' in endpoint:
+        dashboard_base = 'https://eu.smith.langchain.com'
+    else:
+        dashboard_base = 'https://smith.langchain.com'
+    LANGSMITH_PROJECT_URL = f"{dashboard_base}/o/{_project.tenant_id}/projects/p/{_project.id}"
     print(f"📊 LangSmith project URL: {LANGSMITH_PROJECT_URL}")
 except Exception as e:
     LANGSMITH_PROJECT_URL = None
