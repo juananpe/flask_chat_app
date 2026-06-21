@@ -28,7 +28,8 @@ for var in required_vars:
 
 # Set up LangSmith tracing
 os.environ['LANGSMITH_TRACING'] = "true"
-os.environ['LANGSMITH_PROJECT'] = os.getenv('LANGSMITH_PROJECT', 'flask-chat-feedback')
+os.environ['LANGSMITH_PROJECT'] = os.getenv(
+    'LANGSMITH_PROJECT', 'flask-chat-feedback')
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -41,7 +42,8 @@ PROJECT_NAME = os.environ['LANGSMITH_PROJECT']
 try:
     _project = langsmith_client.read_project(project_name=PROJECT_NAME)
     # Use EU dashboard URL if LANGCHAIN_ENDPOINT points to EU region
-    endpoint = os.getenv('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
+    endpoint = os.getenv('LANGCHAIN_ENDPOINT',
+                         'https://api.smith.langchain.com')
     if 'eu.api' in endpoint:
         dashboard_base = 'https://eu.smith.langchain.com'
     else:
@@ -58,6 +60,8 @@ llm = ChatOpenAI(
 )
 
 # Define some simple tools for the agent
+
+
 def get_current_time() -> str:
     """Get the current date and time."""
     from datetime import datetime
@@ -67,7 +71,7 @@ def get_current_time() -> str:
 def calculate(expression: str) -> str:
     """
     Evaluate a mathematical expression.
-    
+
     Args:
         expression: A mathematical expression like "2 + 2" or "10 * 5"
     """
@@ -85,7 +89,7 @@ def calculate(expression: str) -> str:
 def get_weather(location: str) -> str:
     """
     Get weather information for a location (mock implementation).
-    
+
     Args:
         location: The city or location to get weather for
     """
@@ -115,11 +119,11 @@ feedback_store = {}
 def chat_with_agent(user_message: str, run_id: uuid.UUID) -> str:
     """
     Process a user message with the LangGraph agent.
-    
+
     Args:
         user_message: The user's input message
         run_id: Pre-generated run ID for feedback tracking
-    
+
     Returns:
         The agent's response text
     """
@@ -127,7 +131,7 @@ def chat_with_agent(user_message: str, run_id: uuid.UUID) -> str:
         {"messages": [{"role": "user", "content": user_message}]},
         config={"run_id": run_id}
     )
-    
+
     # Get the last message (the agent's response)
     messages = result.get("messages", [])
     if messages:
@@ -146,7 +150,7 @@ def index():
 def chat():
     """
     Handle chat messages and return responses with feedback URLs.
-    
+
     This endpoint:
     1. Generates a pre-defined run_id
     2. Creates presigned feedback URLs (thumbs up/down)
@@ -155,22 +159,23 @@ def chat():
     """
     data = request.json
     user_message = data.get('message', '')
-    
+
     if not user_message:
         return jsonify({'error': 'No message provided'}), 400
-    
+
     try:
         # Pre-generate the run ID
         run_id = uuid.uuid4()
-        
+
         print(f"\n{'='*60}")
         print(f"📨 New chat request")
-        print(f"   User message: {user_message[:50]}{'...' if len(user_message) > 50 else ''}")
+        print(
+            f"   User message: {user_message[:50]}{'...' if len(user_message) > 50 else ''}")
         print(f"   Run ID: {run_id}")
         if LANGSMITH_PROJECT_URL:
             print(f"   LangSmith: {LANGSMITH_PROJECT_URL}?peek={run_id}")
         print(f"{'='*60}\n")
-        
+
         # Create a single presigned feedback token BEFORE the run
         # We'll use the same token URL with different score parameters
         # This avoids the "Feedback config already exists" error
@@ -178,17 +183,17 @@ def chat():
             run_id,
             "user_feedback",
         )
-        
+
         # Now invoke the agent with the pre-generated run_id
         response = chat_with_agent(user_message, run_id)
-        
+
         # Build the feedback URLs with different scores using the same token
         thumbs_up_url = f"{feedback_token.url}?score=1&comment=thumbs_up"
         thumbs_down_url = f"{feedback_token.url}?score=0&comment=thumbs_down"
-        
+
         print(f"✅ Response generated successfully")
         print(f"   Feedback token URL: {feedback_token.url[:60]}...")
-        
+
         # Store the mapping for reference (optional)
         feedback_store[str(run_id)] = {
             'thumbs_up_url': thumbs_up_url,
@@ -196,7 +201,7 @@ def chat():
             'user_message': user_message,
             'response': response
         }
-        
+
         return jsonify({
             'response': response,
             'run_id': str(run_id),
@@ -205,7 +210,7 @@ def chat():
                 'thumbs_down_url': thumbs_down_url
             }
         })
-        
+
     except Exception as e:
         print(f"❌ Error processing chat: {e}")
         return jsonify({'error': str(e)}), 500
@@ -221,12 +226,13 @@ def submit_feedback():
     run_id = data.get('run_id')
     score = data.get('score')  # 1 for thumbs up, 0 for thumbs down
     comment = data.get('comment', '')
-    
+
     if not run_id or score is None:
         return jsonify({'error': 'Missing run_id or score'}), 400
-    
+
     try:
-        print(f"👍 Submitting feedback via direct API for run: {run_id}, score: {score}")
+        print(
+            f"👍 Submitting feedback via direct API for run: {run_id}, score: {score}")
         langsmith_client.create_feedback(
             run_id,
             key="user_feedback",
