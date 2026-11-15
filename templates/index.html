@@ -323,7 +323,7 @@
             sendMessage();
         }
 
-        function addMessage(content, role, feedbackUrls = null, runId = null) {
+        function addMessage(content, role, runId = null) {
             // Remove welcome message on first message
             if (isFirstMessage) {
                 const welcome = chatMessages.querySelector('.welcome-message');
@@ -337,16 +337,16 @@
             let html = `<div class="message-content">${escapeHtml(content)}</div>`;
             
             // Add feedback buttons for assistant messages
-            if (role === 'assistant' && feedbackUrls) {
+            if (role === 'assistant' && runId) {
                 html += `
-                    <div class="feedback-buttons" data-run-id="${runId}">
-                        <button class="feedback-btn thumbs-up" 
-                                onclick="submitFeedback(this, '${feedbackUrls.thumbs_up_url}', 'up')"
+                    <div class="feedback-buttons" data-run-id="${escapeHtml(runId)}">
+                        <button class="feedback-btn thumbs-up"
+                                onclick="submitFeedback(this, 'up')"
                                 title="Good response">
                             👍
                         </button>
-                        <button class="feedback-btn thumbs-down" 
-                                onclick="submitFeedback(this, '${feedbackUrls.thumbs_down_url}', 'down')"
+                        <button class="feedback-btn thumbs-down"
+                                onclick="submitFeedback(this, 'down')"
                                 title="Bad response">
                             👎
                         </button>
@@ -421,7 +421,7 @@
                 if (data.error) {
                     addMessage(`Error: ${data.error}`, 'assistant');
                 } else {
-                    addMessage(data.response, 'assistant', data.feedback, data.run_id);
+                    addMessage(data.response, 'assistant', data.run_id);
                 }
             } catch (error) {
                 removeTypingIndicator();
@@ -434,67 +434,42 @@
             }
         }
 
-        async function submitFeedback(button, url, type) {
+        async function submitFeedback(button, type) {
             const feedbackContainer = button.parentElement;
             const buttons = feedbackContainer.querySelectorAll('.feedback-btn');
-            
-            // Disable all buttons
+
+            // Disable all buttons while submitting
             buttons.forEach(btn => btn.disabled = true);
-            
+
             try {
-                // Use the presigned feedback URL
-                const response = await fetch(url, {
-                    method: 'GET',
-                    mode: 'cors'
+                const response = await fetch('/feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        run_id: feedbackContainer.dataset.runId,
+                        score: type === 'up' ? 1 : 0,
+                        comment: type === 'up' ? 'thumbs_up' : 'thumbs_down'
+                    })
                 });
 
-                if (response.ok || response.status === 200) {
-                    // Mark the selected button
-                    button.classList.add('selected');
-                    
-                    // Update the label to show success
-                    const label = feedbackContainer.querySelector('.feedback-label');
-                    if (label) {
-                        label.textContent = type === 'up' ? '✓ Thanks for the positive feedback!' : '✓ Thanks for the feedback!';
-                        label.classList.add('feedback-status');
-                    }
-                } else {
+                if (!response.ok) {
                     throw new Error('Feedback submission failed');
+                }
+
+                // Mark the selected button and show success
+                button.classList.add('selected');
+                const label = feedbackContainer.querySelector('.feedback-label');
+                if (label) {
+                    label.textContent = type === 'up' ? '✓ Thanks for the positive feedback!' : '✓ Thanks for the feedback!';
+                    label.classList.add('feedback-status');
                 }
             } catch (error) {
                 console.error('Feedback error:', error);
-                // Re-enable buttons on error
+                // Re-enable buttons so the user can retry
                 buttons.forEach(btn => btn.disabled = false);
-                
-                // Try alternative direct feedback submission
-                try {
-                    const runId = feedbackContainer.dataset.runId;
-                    const score = type === 'up' ? 1 : 0;
-                    
-                    const altResponse = await fetch('/feedback', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            run_id: runId,
-                            score: score,
-                            comment: type === 'up' ? 'thumbs_up' : 'thumbs_down'
-                        })
-                    });
-                    
-                    if (altResponse.ok) {
-                        button.classList.add('selected');
-                        const label = feedbackContainer.querySelector('.feedback-label');
-                        if (label) {
-                            label.textContent = type === 'up' ? '✓ Thanks for the positive feedback!' : '✓ Thanks for the feedback!';
-                        }
-                        buttons.forEach(btn => btn.disabled = true);
-                    }
-                } catch (altError) {
-                    console.error('Alternative feedback also failed:', altError);
-                    alert('Failed to submit feedback. Please try again.');
-                }
+                alert('Failed to submit feedback. Please try again.');
             }
         }
     </script>

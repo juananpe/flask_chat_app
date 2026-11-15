@@ -4,8 +4,7 @@ Flask Chat App with LangGraph Agent and Feedback System
 
 This app demonstrates:
 - A basic LangGraph ReAct agent for chat
-- Pre-signed feedback URLs using LangSmith's create_presigned_feedback_token
-- Thumb up/down feedback collection
+- Thumb up/down feedback collection, sent to LangSmith through /feedback
 """
 
 import os
@@ -21,7 +20,7 @@ from langsmith import Client, traceable
 load_dotenv()
 
 # Verify required environment variables
-required_vars = ['OPENAI_API_KEY', 'LANGSMITH_API_KEY']
+required_vars = ['OPENROUTER_API_KEY', 'LANGSMITH_API_KEY']
 for var in required_vars:
     if not os.getenv(var):
         raise ValueError(f"Missing required environment variable: {var}")
@@ -49,14 +48,18 @@ try:
     else:
         dashboard_base = 'https://smith.langchain.com'
     LANGSMITH_PROJECT_URL = f"{dashboard_base}/o/{_project.tenant_id}/projects/p/{_project.id}"
+    LANGSMITH_PROJECT_ID = _project.id
     print(f"📊 LangSmith project URL: {LANGSMITH_PROJECT_URL}")
 except Exception as e:
     LANGSMITH_PROJECT_URL = None
+    LANGSMITH_PROJECT_ID = None
     print(f"⚠️  Could not fetch LangSmith project info: {e}")
 
-# Initialize the LLM
+# Initialize the LLM (OpenRouter exposes an OpenAI-compatible API)
 llm = ChatOpenAI(
-    model="gpt-4.1-mini"
+    model=os.getenv('OPENROUTER_MODEL', 'openai/gpt-4.1-mini'),
+    api_key=os.environ['OPENROUTER_API_KEY'],
+    base_url='https://openrouter.ai/api/v1',
 )
 
 # Define some simple tools for the agent
@@ -110,11 +113,6 @@ agent = create_agent(
 )
 
 
-# Store for tracking run_ids and their feedback URLs
-# In production, you'd want to use a proper database
-feedback_store = {}
-
-
 @traceable(name="chat_with_agent")
 def chat_with_agent(user_message: str, run_id: uuid.UUID) -> str:
     """
@@ -149,13 +147,10 @@ def index():
 @app.route('/chat', methods=['POST'])
 def chat():
     """
-    Handle chat messages and return responses with feedback URLs.
+    Handle chat messages and return the response with its run_id.
 
-    This endpoint:
-    1. Generates a pre-defined run_id
-    2. Creates presigned feedback URLs (thumbs up/down)
-    3. Processes the message with the agent
-    4. Returns the response along with feedback URLs
+    The run_id is generated up front so the client can later attach
+    feedback to this run through the /feedback endpoint.
     """
     data = request.json
     user_message = data.get('message', '')
@@ -176,39 +171,14 @@ def chat():
             print(f"   LangSmith: {LANGSMITH_PROJECT_URL}?peek={run_id}")
         print(f"{'='*60}\n")
 
-        # Create a single presigned feedback token BEFORE the run
-        # We'll use the same token URL with different score parameters
-        # This avoids the "Feedback config already exists" error
-        feedback_token = langsmith_client.create_presigned_feedback_token(
-            run_id,
-            "user_feedback",
-        )
-
-        # Now invoke the agent with the pre-generated run_id
+        # Invoke the agent with the pre-generated run_id
         response = chat_with_agent(user_message, run_id)
 
-        # Build the feedback URLs with different scores using the same token
-        thumbs_up_url = f"{feedback_token.url}?score=1&comment=thumbs_up"
-        thumbs_down_url = f"{feedback_token.url}?score=0&comment=thumbs_down"
-
         print(f"✅ Response generated successfully")
-        print(f"   Feedback token URL: {feedback_token.url[:60]}...")
-
-        # Store the mapping for reference (optional)
-        feedback_store[str(run_id)] = {
-            'thumbs_up_url': thumbs_up_url,
-            'thumbs_down_url': thumbs_down_url,
-            'user_message': user_message,
-            'response': response
-        }
 
         return jsonify({
             'response': response,
             'run_id': str(run_id),
-            'feedback': {
-                'thumbs_up_url': thumbs_up_url,
-                'thumbs_down_url': thumbs_down_url
-            }
         })
 
     except Exception as e:
@@ -219,8 +189,10 @@ def chat():
 @app.route('/feedback', methods=['POST'])
 def submit_feedback():
     """
-    Alternative endpoint to submit feedback directly.
-    This is useful if you prefer not to use the presigned URL approach.
+    Record thumbs up/down feedback for a run in LangSmith.
+
+    The LangSmith API key stays on the server; the client only sends
+    the run_id and the score.
     """
     data = request.json
     run_id = data.get('run_id')
@@ -232,12 +204,13 @@ def submit_feedback():
 
     try:
         print(
-            f"👍 Submitting feedback via direct API for run: {run_id}, score: {score}")
+            f"👍 Submitting feedback for run: {run_id}, score: {score}")
         langsmith_client.create_feedback(
             run_id,
             key="user_feedback",
             score=float(score),
-            comment=comment
+            comment=comment,
+            session_id=LANGSMITH_PROJECT_ID,
         )
         print(f"✅ Feedback submitted successfully!")
         return jsonify({'success': True, 'message': 'Feedback submitted'})
@@ -247,5 +220,5 @@ def submit_feedback():
 
 if __name__ == '__main__':
     print("Starting Flask Chat App with LangGraph Agent...")
-    print("Make sure you have set OPENAI_API_KEY and LANGSMITH_API_KEY in your .env file")
+    print("Make sure you have set OPENROUTER_API_KEY and LANGSMITH_API_KEY in your .env file")
     app.run(debug=True, port=5000)

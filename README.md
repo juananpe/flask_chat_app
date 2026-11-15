@@ -2,7 +2,7 @@
 
 A simple Flask web application that demonstrates:
 - **LangGraph ReAct Agent**: A chat agent with access to tools (time, calculator, weather)
-- **LangSmith Feedback**: User feedback collection using presigned feedback URLs
+- **LangSmith Feedback**: User feedback collection through a server-side `/feedback` endpoint
 - **Thumb Up/Down UI**: Simple feedback mechanism without exposing API keys to the client
 
 ## Features
@@ -10,23 +10,18 @@ A simple Flask web application that demonstrates:
 - 🤖 Chat with a LangGraph-powered AI agent
 - 🛠️ Agent has access to tools: current time, calculator, weather (mock)
 - 👍👎 Rate each response with thumbs up/down
-- 🔒 Feedback uses presigned URLs (no API keys exposed to frontend)
+- 🔒 Feedback goes through the Flask backend (no API keys exposed to frontend)
 - 📊 All interactions and feedback are logged to LangSmith
 
-## How Presigned Feedback URLs Work
+## How Feedback Works
 
-The key feature of this app is the use of `create_presigned_feedback_token` from LangSmith:
+1. **Before the agent runs**, the server generates a unique `run_id` using `uuid.uuid4()`
+2. **Run the agent** with that pre-generated run_id
+3. **Return the run_id** to the frontend along with the response
+4. **Client submits feedback** with a `POST /feedback` carrying the run_id and the score
+5. **Server records it** in LangSmith with `client.create_feedback`
 
-1. **Before the agent runs**, we generate a unique `run_id` using `uuid.uuid4()`
-2. **Create presigned tokens** for feedback using this run_id (before the run exists!)
-3. **Run the agent** with the pre-generated run_id
-4. **Send feedback URLs** to the frontend along with the response
-5. **Client submits feedback** by simply making a GET request to the presigned URL
-
-This approach is secure because:
-- No API keys are exposed to the client
-- Feedback URLs are scoped to a specific run and feedback key
-- URLs can be time-limited (optional)
+The LangSmith API key never leaves the server: the browser only knows the run_id.
 
 ## Setup
 
@@ -41,7 +36,7 @@ This approach is secure because:
 3. **Set up environment variables**:
    ```bash
    cp .env.example .env
-   # Edit .env with your API keys
+   # Edit .env with your OpenRouter and LangSmith API keys
    ```
 
 4. **Run the app**:
@@ -65,43 +60,39 @@ flask_chat_app/
 
 ## Key Code Snippets
 
-### Creating Presigned Feedback URLs
+### Running the Agent with a Known Run ID
 
 ```python
-from langsmith import Client
-import uuid
-
-client = Client()
-
-# Pre-generate run ID
 run_id = uuid.uuid4()
 
-# Create presigned feedback token BEFORE the run
-thumbs_up_token = client.create_presigned_feedback_token(
-    run_id,
-    "user_feedback",
-    feedback_config={
-        "type": "continuous",
-        "min": 0,
-        "max": 1
-    }
-)
-
-# Build URL with score
-thumbs_up_url = f"{thumbs_up_token.url}?score=1&comment=thumbs_up"
-
-# Run the agent with the pre-generated run_id
 result = agent.invoke(
     {"messages": [{"role": "user", "content": message}]},
     config={"run_id": run_id}
+)
+
+return jsonify({"response": response, "run_id": str(run_id)})
+```
+
+### Recording Feedback on the Server
+
+```python
+langsmith_client.create_feedback(
+    run_id,
+    key="user_feedback",
+    score=float(score),       # 1 = thumbs up, 0 = thumbs down
+    comment=comment,
+    session_id=LANGSMITH_PROJECT_ID,
 )
 ```
 
 ### Frontend Feedback Submission
 
 ```javascript
-// Simply make a GET request to the presigned URL
-await fetch(thumbs_up_url, { method: 'GET' });
+await fetch('/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId, score: 1, comment: 'thumbs_up' })
+});
 ```
 
 ## LangSmith Dashboard
@@ -129,23 +120,20 @@ tools = [get_current_time, calculate, get_weather, my_custom_tool]
 
 ### Changing the Model
 
-```python
-llm = ChatOpenAI(
-    model="gpt-4o",  # or any other OpenAI model
-    temperature=0.7,
-)
+The app talks to models through [OpenRouter](https://openrouter.ai). Set
+`OPENROUTER_MODEL` in `.env` to any OpenRouter model slug:
+
+```bash
+OPENROUTER_MODEL=openai/gpt-4o  # defaults to openai/gpt-4.1-mini
 ```
 
 ### Adding More Feedback Types
 
-You can add more feedback types (e.g., relevance, helpfulness):
+Use a different feedback `key` (e.g., relevance, helpfulness) when calling
+`create_feedback`:
 
 ```python
-relevance_token = client.create_presigned_feedback_token(
-    run_id,
-    "relevance",  # Different feedback key
-    feedback_config={"type": "continuous", "min": 1, "max": 5}
-)
+langsmith_client.create_feedback(run_id, key="relevance", score=4)
 ```
 
 ## License
