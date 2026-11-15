@@ -31,3 +31,5 @@ node_modules/
 
 .venv/
 .playwright-mcp
+
+.claude/
